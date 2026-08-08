@@ -228,21 +228,30 @@ static const char * cu_get_error_str(CUresult err) {
 #endif
 
 #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
-#    define CUDA_SET_SHARED_MEMORY_LIMIT(kernel, nbytes)                                                       \
+#    define CUDA_SET_SHARED_MEMORY_LIMIT_FORCE(kernel, nbytes, force_reapply)                                  \
         do {                                                                                                   \
             static bool shared_memory_limit_raised[GGML_CUDA_MAX_DEVICES] = { false };                         \
             const int   id                                                = ggml_cuda_get_device();            \
-            if (!shared_memory_limit_raised[id]) {                                                             \
+            if (!shared_memory_limit_raised[id] || (force_reapply)) {                                          \
                 CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, nbytes)); \
                 shared_memory_limit_raised[id] = true;                                                         \
             }                                                                                                  \
         } while (0)
+
+#    define CUDA_SET_SHARED_MEMORY_LIMIT(kernel, nbytes)          \
+        CUDA_SET_SHARED_MEMORY_LIMIT_FORCE(kernel, nbytes, false)
 #else
+#    define CUDA_SET_SHARED_MEMORY_LIMIT_FORCE(kernel, nbytes, force_reapply) \
+        do {                                                                  \
+            GGML_UNUSED(nbytes);                                              \
+            GGML_UNUSED(force_reapply);                                       \
+        } while (0)
+
 #    define CUDA_SET_SHARED_MEMORY_LIMIT(kernel, nbytes) \
         do {                                             \
             GGML_UNUSED(nbytes);                         \
         } while (0)
-#endif // !(defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
+#endif // !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
 
 #if CUDART_VERSION >= 11010 || defined(GGML_USE_MUSA)
 #define GGML_CUDA_ASSUME(x) __builtin_assume(x)
@@ -1418,7 +1427,6 @@ struct ggml_backend_cuda_context {
     cudaEvent_t copy_event = nullptr;
     int flash_attn_type = 0;
     int sleep_idle_seconds = 0;
-
 
     cudaStream_t streams[GGML_CUDA_MAX_DEVICES][GGML_CUDA_MAX_STREAMS] = { { nullptr } };
     cublasHandle_t cublas_handles[GGML_CUDA_MAX_DEVICES] = {nullptr};

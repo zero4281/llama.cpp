@@ -5512,8 +5512,9 @@ static void ggml_backend_cuda_parse_params(const char * params, ggml_backend_cud
         return;
     }
     // Look for --flash-attn on
-    const char * flash_attn = strstr(params, "--flash-attn on");
-    if (flash_attn != nullptr) {
+    bool flash_attn = (strstr(params, "--flash-attn ") && !strstr(params, "--flash-attn off")) ||
+                       (strstr(params, "-fa ") && !strstr(params, "-fa off"));
+    if (flash_attn) {
         ctx->flash_attn_type = 1;
     }
 
@@ -5533,7 +5534,7 @@ ggml_backend_t ggml_backend_cuda_init(int device, const char * params) {
         GGML_LOG_ERROR("%s: invalid device %d\n", __func__, device);
         return nullptr;
     }
-    
+
     ggml_backend_cuda_context * ctx = new ggml_backend_cuda_context(device);
     if (ctx == nullptr) {
         GGML_LOG_ERROR("%s: failed to allocate context\n", __func__);
@@ -5548,9 +5549,8 @@ ggml_backend_t ggml_backend_cuda_init(int device, const char * params) {
         /* .device  = */ ggml_backend_reg_dev_get(ggml_backend_cuda_reg(), device),
         /* .context = */ ctx,
     };
-    
+
     return cuda_backend;
 }
-
 
 GGML_BACKEND_DL_IMPL(ggml_backend_cuda_reg)
