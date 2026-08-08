@@ -4805,9 +4805,8 @@ static void ggml_backend_cuda_device_get_props(ggml_backend_dev_t dev, ggml_back
 }
 
 static ggml_backend_t ggml_backend_cuda_device_init_backend(ggml_backend_dev_t dev, const char * params) {
-    GGML_UNUSED(params);
     ggml_backend_cuda_device_context * ctx = (ggml_backend_cuda_device_context *)dev->context;
-    return ggml_backend_cuda_init(ctx->device);
+    return ggml_backend_cuda_init(ctx->device, params);
 }
 
 static ggml_backend_buffer_type_t ggml_backend_cuda_device_get_buffer_type(ggml_backend_dev_t dev) {
@@ -5508,17 +5507,40 @@ ggml_backend_reg_t ggml_backend_cuda_reg() {
     return &reg;
 }
 
-ggml_backend_t ggml_backend_cuda_init(int device) {
+static void ggml_backend_cuda_parse_params(const char * params, ggml_backend_cuda_context * ctx) {
+    if (params == nullptr) {
+        return;
+    }
+    // Look for --flash-attn on
+    const char * flash_attn = strstr(params, "--flash-attn on");
+    if (flash_attn != nullptr) {
+        ctx->flash_attn_type = 1;
+    }
+
+    // Look for --sleep-idle-seconds <value>
+    const char * sleep_idle = strstr(params, "--sleep-idle-seconds");
+    if (sleep_idle != nullptr) {
+        // Find the number after the flag
+        const char * value_ptr = strchr(sleep_idle, ' ');
+        if (value_ptr != nullptr) {
+            ctx->sleep_idle_seconds = atoi(value_ptr + 1);
+        }
+    }
+}
+
+ggml_backend_t ggml_backend_cuda_init(int device, const char * params) {
     if (device < 0 || device >= ggml_backend_cuda_get_device_count()) {
         GGML_LOG_ERROR("%s: invalid device %d\n", __func__, device);
         return nullptr;
     }
-
+    
     ggml_backend_cuda_context * ctx = new ggml_backend_cuda_context(device);
     if (ctx == nullptr) {
         GGML_LOG_ERROR("%s: failed to allocate context\n", __func__);
         return nullptr;
     }
+
+    ggml_backend_cuda_parse_params(params, ctx);
 
     ggml_backend_t cuda_backend = new ggml_backend {
         /* .guid    = */ ggml_backend_cuda_guid(),
@@ -5526,8 +5548,9 @@ ggml_backend_t ggml_backend_cuda_init(int device) {
         /* .device  = */ ggml_backend_reg_dev_get(ggml_backend_cuda_reg(), device),
         /* .context = */ ctx,
     };
-
+    
     return cuda_backend;
 }
+
 
 GGML_BACKEND_DL_IMPL(ggml_backend_cuda_reg)
